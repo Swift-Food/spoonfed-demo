@@ -1,4 +1,4 @@
-import { parseISO, getDay, startOfDay, endOfDay } from 'date-fns';
+import { parseISO, getDay, startOfDay, endOfDay, addDays, format } from 'date-fns';
 import type { Account, Item, Menu, Order, OrderLine, OrderStatus } from './types';
 import { getOrderCutoff } from './dates';
 import { formatMoney, round2 } from './money';
@@ -16,6 +16,23 @@ export function isMenuAvailableForDate(menu: Menu, eventDateISO: string, now: Da
 
 export function menusForDate(menus: Menu[], eventDateISO: string, now: Date): Menu[] {
   return menus.filter((menu) => isMenuAvailableForDate(menu, eventDateISO, now));
+}
+
+// Derive the menu an in-progress order belongs to, from its first line's item.
+// Phase 1 orders are single-menu (serviceType 'single'), so this is unambiguous.
+export function getOrderMenu(order: Order, items: Item[], menus: Menu[]): Menu | undefined {
+  const firstItem = order.lines[0] && items.find((i) => i.id === order.lines[0].itemId);
+  return firstItem ? menus.find((m) => m.id === firstItem.menuId) : undefined;
+}
+
+// First date (today..+horizonDays) for which at least one menu is available —
+// used for the "nothing fresh for that date yet" empty state copy.
+export function earliestAvailableDate(menus: Menu[], now: Date, horizonDays = 90): string | undefined {
+  for (let i = 0; i <= horizonDays; i++) {
+    const iso = format(addDays(now, i), 'yyyy-MM-dd');
+    if (menus.some((menu) => isMenuAvailableForDate(menu, iso, now))) return iso;
+  }
+  return undefined;
 }
 
 export function validateMinimums(order: Order, menu: Menu, items: Item[]): string[] {

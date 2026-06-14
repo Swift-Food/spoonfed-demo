@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { computeTotals, isMenuAvailableForDate, requiresApproval, validateMinimums } from './rules';
+import {
+  computeTotals,
+  earliestAvailableDate,
+  getOrderMenu,
+  isMenuAvailableForDate,
+  requiresApproval,
+  validateMinimums,
+} from './rules';
 import type { Account, Item, Menu, Order, OrderLine } from './types';
 
 const account: Account = {
@@ -85,6 +92,57 @@ describe('isMenuAvailableForDate', () => {
     expect(isMenuAvailableForDate({ ...menu, active: false }, '2026-06-15', now)).toBe(false);
     expect(isMenuAvailableForDate({ ...menu, offline: true }, '2026-06-15', now)).toBe(false);
   });
+
+  it('is unavailable for an event date before the menu availability window opens', () => {
+    // menu.availableFrom is 2026-01-01; 2025-12-31 is a Wednesday, well clear of cutoff
+    const now = new Date('2025-12-29T09:00:00');
+    expect(isMenuAvailableForDate(menu, '2025-12-31', now)).toBe(false);
+  });
+
+  it('is unavailable for an event date after the menu availability window closes', () => {
+    // menu.availableTo is 2026-12-31; 2027-01-01 is a Friday, well clear of cutoff
+    const now = new Date('2026-12-29T09:00:00');
+    expect(isMenuAvailableForDate(menu, '2027-01-01', now)).toBe(false);
+  });
+
+  it('is available on the first day of the availability window', () => {
+    // 2026-01-01 is a Thursday, within availableDays and clear of cutoff
+    const now = new Date('2025-12-30T09:00:00');
+    expect(isMenuAvailableForDate(menu, '2026-01-01', now)).toBe(true);
+  });
+
+  it('is available on the last day of the availability window', () => {
+    // 2026-12-31 is a Thursday, within availableDays and clear of cutoff
+    const now = new Date('2026-12-29T09:00:00');
+    expect(isMenuAvailableForDate(menu, '2026-12-31', now)).toBe(true);
+  });
+});
+
+describe('earliestAvailableDate', () => {
+  it('returns tomorrow when ordering this morning, ahead of tomorrow\'s cutoff', () => {
+    // Monday 2026-06-15 09:00: today is already past cutoff, but tomorrow's
+    // cutoff (today 10:00) hasn't passed yet.
+    const now = new Date('2026-06-15T09:00:00');
+    expect(earliestAvailableDate([menu], now)).toBe('2026-06-16');
+  });
+
+  it('skips to the day after tomorrow once today\'s cutoff has passed', () => {
+    // Monday 2026-06-15 11:00: tomorrow's cutoff (today 10:00) has passed.
+    const now = new Date('2026-06-15T11:00:00');
+    expect(earliestAvailableDate([menu], now)).toBe('2026-06-17');
+  });
+
+  it('skips weekends to the next available weekday', () => {
+    // Friday 2026-06-19 11:00: Sat/Sun are outside availableDays, so the
+    // earliest valid date is the following Monday.
+    const now = new Date('2026-06-19T11:00:00');
+    expect(earliestAvailableDate([menu], now)).toBe('2026-06-22');
+  });
+
+  it('returns undefined when no menu is ever available within the horizon', () => {
+    const now = new Date('2026-06-15T09:00:00');
+    expect(earliestAvailableDate([{ ...menu, active: false }], now, 7)).toBeUndefined();
+  });
 });
 
 const item: Item = {
@@ -129,6 +187,16 @@ const baseOrder: Order = {
   updatedAt: '2026-06-01T00:00:00.000Z',
   history: [],
 };
+
+describe('getOrderMenu', () => {
+  it('returns the menu for the item on the order\'s first line', () => {
+    expect(getOrderMenu(baseOrder, [item], [menu])).toEqual(menu);
+  });
+
+  it('returns undefined for an order with no lines', () => {
+    expect(getOrderMenu({ ...baseOrder, lines: [] }, [item], [menu])).toBeUndefined();
+  });
+});
 
 describe('validateMinimums', () => {
   it('passes when subtotal, headcount and line quantities all meet the menu/item minimums', () => {

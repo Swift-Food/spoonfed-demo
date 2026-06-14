@@ -1,8 +1,16 @@
-import { parseISO, subDays, set } from 'date-fns';
+import { parseISO, subDays, set, format } from 'date-fns';
 import type { Menu } from './types';
 
 export function toDate(iso: string): Date {
   return parseISO(iso);
+}
+
+export function formatFriendlyDate(iso: string): string {
+  return format(parseISO(iso), 'EEEE d MMMM');
+}
+
+export function formatFriendlyDateTime(date: Date): string {
+  return format(date, "EEEE d MMMM 'at' HH:mm");
 }
 
 /**

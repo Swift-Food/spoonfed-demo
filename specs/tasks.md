@@ -56,3 +56,34 @@
 - [x] `npm run lint` clean
 - [x] `npm run test` passes
 - [x] Smoke: `npm run dev` — Eden branding visible, persona switch changes home+nav, all routes render placeholders
+
+## Phase 1 — Customer ordering happy path
+
+### lib (pure functions + tests)
+- [x] `src/lib/money.ts` — `UNIT_LABELS`, `formatUnit(unit)`
+- [x] `src/lib/dates.ts` — `formatFriendlyDate(iso)`, `formatFriendlyDateTime(date)`
+- [x] `src/lib/rules.ts` — `getOrderMenu(order, items, menus)`, `earliestAvailableDate(menus, now, horizonDays?)`
+- [x] `src/lib/rules.test.ts` — date-window boundary cases for `isMenuAvailableForDate`; tests for `getOrderMenu` and `earliestAvailableDate`
+
+### Store
+- [x] `src/store/useStore.ts` — implement `startDraft`, `addLine`, `updateLineQty`, `removeLine`, `setDraftField`, `submitDraft` (+ local `nextOrderNumber` helper)
+
+### Shared components
+- [x] `src/components/common/QtyStepper.tsx` — +/- stepper clamped to `[min, max]`
+- [x] `src/components/common/Tags.tsx` — `DietaryTags`, `AllergenTags` pill rows
+
+### Customer pages
+- [x] `src/features/customer/DatePicker.tsx` — date input, Continue → `startDraft`/`setDraftField`, navigate to `/order/menus`
+- [x] `src/features/customer/MenuBrowse.tsx` — `menusForDate()` cards; empty state with `earliestAvailableDate`
+- [x] `src/features/customer/MenuDetail.tsx` — item cards, `QtyStepper`, dietary filter chips, add to cart, sticky cart bar
+- [x] `src/features/customer/Cart.tsx` — line list, qty edit/remove, totals, minimum-violation banner
+- [x] `src/features/customer/Checkout.tsx` — delivery/PO/cost-centre form, approval notice, cutoff note, submit
+- [x] `src/features/customer/MyOrders.tsx` — list of the orderer's orders with `StatusChip`
+- [x] `src/features/customer/OrderTrack.tsx` — status timeline + order summary + history
+
+### GATE
+- [x] `npx tsc --noEmit` clean
+- [x] `npm run build` succeeds
+- [x] `npm run lint` clean
+- [x] `npm run test` passes
+- [x] Smoke: Emma places a Sandwich Lunch for a valid future date (PO + cost centre), sees minimum/lead-time enforcement, submits, sees it in My Orders with the right status, opens Order Track
