@@ -16,7 +16,8 @@ import type {
   Role,
 } from '../lib/types';
 import { createSeedData, DEFAULT_PERSONA } from '../lib/seed';
-import { computeTotals, requiresApproval } from '../lib/rules';
+import { buildInvoice, computeTotals, requiresApproval } from '../lib/rules';
+import { canTransition, STATUS_LABELS } from '../lib/stateMachine';
 import { round2 } from '../lib/money';
 
 function nextOrderNumber(orders: Order[]): string {
@@ -25,6 +26,10 @@ function nextOrderNumber(orders: Order[]): string {
     return Number.isFinite(n) ? Math.max(m, n) : m;
   }, 1000);
   return `EDN-${max + 1}`;
+}
+
+function contactName(contacts: Contact[], contactId?: string): string {
+  return contacts.find((c) => c.id === contactId)?.name ?? 'Eden Caterers';
 }
 
 interface AppState {
@@ -272,15 +277,109 @@ export const useStore = create<AppState>()((set) => ({
   },
 
   // --- Back office (Phase 2) ---
-  confirmOrder: (_orderId) => {
-    // Implemented in Phase 2.
-  },
-  advanceStatus: (_orderId, _toStatus) => {
-    // Implemented in Phase 2.
-  },
-  assignDriver: (_orderId, _driverId) => {
-    // Implemented in Phase 2.
-  },
+  confirmOrder: (orderId) =>
+    set((state) => {
+      const order = state.orders.find((o) => o.id === orderId);
+      if (!order || !canTransition(order, 'confirmed', state.persona.role)) return {};
+
+      const now = new Date().toISOString();
+      const actor = contactName(state.contacts, state.persona.contactId);
+      const updated: Order = {
+        ...order,
+        status: 'confirmed',
+        updatedAt: now,
+        history: [...order.history, { at: now, actorRole: state.persona.role, note: `Order confirmed by ${actor}.` }],
+      };
+      const notification: AppNotification = {
+        id: nanoid(),
+        type: 'confirmed',
+        orderId,
+        recipientRole: 'orderer',
+        message: `Eden's got it — order ${order.orderNumber} is confirmed.`,
+        createdAt: now,
+        read: false,
+      };
+
+      return {
+        orders: state.orders.map((o) => (o.id === orderId ? updated : o)),
+        notifications: [...state.notifications, notification],
+      };
+    }),
+
+  advanceStatus: (orderId, toStatus) =>
+    set((state) => {
+      const order = state.orders.find((o) => o.id === orderId);
+      if (!order || !canTransition(order, toStatus, state.persona.role)) return {};
+
+      const now = new Date().toISOString();
+      const actor = contactName(state.contacts, state.persona.contactId);
+      let note: string;
+      let notification: AppNotification | undefined;
+
+      switch (toStatus) {
+        case 'in_production':
+          note = `Production started by ${actor}.`;
+          break;
+        case 'out_for_delivery': {
+          const driver = order.driverId ? state.contacts.find((c) => c.id === order.driverId) : undefined;
+          note = driver ? `Out for delivery with ${driver.name}.` : `Order dispatched by ${actor}.`;
+          notification = {
+            id: nanoid(),
+            type: 'out_for_delivery',
+            orderId,
+            recipientRole: 'orderer',
+            message: `Order ${order.orderNumber} is out for delivery.`,
+            createdAt: now,
+            read: false,
+          };
+          break;
+        }
+        case 'delivered':
+          note = `Delivered by ${actor}.`;
+          notification = {
+            id: nanoid(),
+            type: 'delivered',
+            orderId,
+            recipientRole: 'orderer',
+            message: `Order ${order.orderNumber} has been delivered.`,
+            createdAt: now,
+            read: false,
+          };
+          break;
+        default:
+          note = `Status updated to ${STATUS_LABELS[toStatus]} by ${actor}.`;
+      }
+
+      const updated: Order = {
+        ...order,
+        status: toStatus,
+        updatedAt: now,
+        history: [...order.history, { at: now, actorRole: state.persona.role, note }],
+      };
+
+      return {
+        orders: state.orders.map((o) => (o.id === orderId ? updated : o)),
+        ...(notification ? { notifications: [...state.notifications, notification] } : {}),
+      };
+    }),
+
+  assignDriver: (orderId, driverId) =>
+    set((state) => {
+      const order = state.orders.find((o) => o.id === orderId);
+      if (!order) return {};
+
+      const now = new Date().toISOString();
+      const driver = state.contacts.find((c) => c.id === driverId);
+      const updated: Order = {
+        ...order,
+        driverId,
+        updatedAt: now,
+        history: [...order.history, { at: now, actorRole: state.persona.role, note: `Driver assigned: ${driver?.name ?? driverId}.` }],
+      };
+
+      return { orders: state.orders.map((o) => (o.id === orderId ? updated : o)) };
+    }),
+
   cancelOrder: (_orderId, _note) => {
     // Implemented in Phase 3.
   },
@@ -306,15 +405,89 @@ export const useStore = create<AppState>()((set) => ({
   },
 
   // --- Invoices (Phase 2) ---
-  generateInvoice: (_orderId) => {
-    // Implemented in Phase 2.
-  },
-  markInvoiceSent: (_invoiceId) => {
-    // Implemented in Phase 2.
-  },
-  markInvoicePaid: (_invoiceId) => {
-    // Implemented in Phase 2.
-  },
+  generateInvoice: (orderId) =>
+    set((state) => {
+      const order = state.orders.find((o) => o.id === orderId);
+      const account = order && state.accounts.find((a) => a.id === order.accountId);
+      if (!order || !account || !canTransition(order, 'invoiced', state.persona.role)) return {};
+
+      const nowDate = new Date();
+      const now = nowDate.toISOString();
+      const actor = contactName(state.contacts, state.persona.contactId);
+      const invoice: Invoice = { id: nanoid(), ...buildInvoice(order, account, nowDate) };
+
+      const updated: Order = {
+        ...order,
+        status: 'invoiced',
+        updatedAt: now,
+        history: [...order.history, { at: now, actorRole: state.persona.role, note: `Invoice ${invoice.invoiceNumber} generated by ${actor}.` }],
+      };
+
+      return {
+        orders: state.orders.map((o) => (o.id === orderId ? updated : o)),
+        invoices: [...state.invoices, invoice],
+      };
+    }),
+
+  markInvoiceSent: (invoiceId) =>
+    set((state) => {
+      const invoice = state.invoices.find((i) => i.id === invoiceId);
+      if (!invoice) return {};
+
+      const order = state.orders.find((o) => o.id === invoice.orderId);
+      const now = new Date().toISOString();
+      const actor = contactName(state.contacts, state.persona.contactId);
+      const notification: AppNotification = {
+        id: nanoid(),
+        type: 'invoice_sent',
+        orderId: invoice.orderId,
+        recipientRole: 'orderer',
+        message: `Invoice ${invoice.invoiceNumber} has been sent for order ${order?.orderNumber ?? ''}.`,
+        createdAt: now,
+        read: false,
+      };
+
+      return {
+        invoices: state.invoices.map((i) => (i.id === invoiceId ? { ...i, status: 'sent' } : i)),
+        orders: order
+          ? state.orders.map((o) =>
+              o.id === order.id
+                ? {
+                    ...o,
+                    updatedAt: now,
+                    history: [...o.history, { at: now, actorRole: state.persona.role, note: `Invoice ${invoice.invoiceNumber} sent by ${actor}.` }],
+                  }
+                : o,
+            )
+          : state.orders,
+        notifications: [...state.notifications, notification],
+      };
+    }),
+
+  markInvoicePaid: (invoiceId) =>
+    set((state) => {
+      const invoice = state.invoices.find((i) => i.id === invoiceId);
+      if (!invoice) return {};
+
+      const order = state.orders.find((o) => o.id === invoice.orderId);
+      const now = new Date().toISOString();
+      const actor = contactName(state.contacts, state.persona.contactId);
+
+      return {
+        invoices: state.invoices.map((i) => (i.id === invoiceId ? { ...i, status: 'paid' } : i)),
+        orders: order
+          ? state.orders.map((o) =>
+              o.id === order.id
+                ? {
+                    ...o,
+                    updatedAt: now,
+                    history: [...o.history, { at: now, actorRole: state.persona.role, note: `Invoice ${invoice.invoiceNumber} marked as paid by ${actor}.` }],
+                  }
+                : o,
+            )
+          : state.orders,
+      };
+    }),
 
   // --- Notifications ---
   pushNotification: (notification) =>

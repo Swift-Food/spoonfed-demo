@@ -87,3 +87,28 @@
 - [x] `npm run lint` clean
 - [x] `npm run test` passes
 - [x] Smoke: Emma places a Sandwich Lunch for a valid future date (PO + cost centre), sees minimum/lead-time enforcement, submits, sees it in My Orders with the right status, opens Order Track
+
+## Phase 2 — Back-office thread (completes end-to-end)
+
+### lib (pure functions + tests)
+- [x] `src/lib/rules.ts` — `buildInvoice(order, account, now)`: invoice fields with invoiceNumber derived from orderNumber, issueDate/dueDate from `now`/`account.paymentTermsDays`, PO/cost centre and totals carried from the order
+- [x] `src/lib/rules.test.ts` — `buildInvoice` carries PO + cost centre, totals match the order, invoiceNumber derivation, dueDate = issueDate + paymentTermsDays
+- [x] `src/lib/stateMachine.test.ts` — full lifecycle path test: submitted→confirmed→in_production→out_for_delivery→delivered→invoiced, each step `canTransition` true for the correct role(s) and false for every other role
+
+### Store
+- [x] `src/store/useStore.ts` — implement `confirmOrder`, `advanceStatus`, `assignDriver`, `generateInvoice` (uses `buildInvoice`), `markInvoiceSent`, `markInvoicePaid`; guarded by `canTransition`, append history + notifications
+
+### Back-office pages
+- [x] `src/features/backoffice/Dashboard.tsx` — tiles: Needs confirmation, Today's deliveries, Pending approvals, Unpaid invoices, each linking to Calendar/Delivery/Invoices
+- [x] `src/features/backoffice/Calendar.tsx` — week grid keyed by `eventDate`, entries colour-coded via `StatusChip`, click → `/admin/orders/:id`, prev/next week nav
+- [x] `src/features/backoffice/OrderDetailAdmin.tsx` — full order fields (read), status action bar driven by `canTransition` (Confirm / Start production / Out for delivery / Delivered / Generate invoice), driver assign dropdown, history trail
+- [x] `src/features/backoffice/ProductionList.tsx` — date selector; By item (aggregated qty + allergens) and By order tabs for confirmed/in_production orders on that date; "Start production" → `advanceStatus(..., 'in_production')`
+- [x] `src/features/backoffice/DeliveryRunSheet.tsx` — date selector; stops sorted by `requestedDeliveryTime`, driver dropdown, Dispatch (`advanceStatus(..., 'out_for_delivery')`) and Delivered (`advanceStatus(..., 'delivered')`) actions
+- [x] `src/features/backoffice/InvoiceList.tsx` — delivered orders awaiting invoice with "Generate invoice" (`generateInvoice`); invoices table with Mark sent / Mark paid
+
+### GATE
+- [x] `npx tsc --noEmit` clean
+- [x] `npm run build` succeeds
+- [x] `npm run lint` clean
+- [x] `npm run test` passes
+- [x] Smoke: as Sam (caterer_admin), EDN-1003 (Emma's confirmed, today-dated order) appears on the Calendar today; start production via ProductionList, dispatch + deliver via DeliveryRunSheet, generate invoice via InvoiceList with PO/cost-centre carried through; switch to Emma and confirm OrderTrack reflects in_production → out_for_delivery → delivered → invoiced

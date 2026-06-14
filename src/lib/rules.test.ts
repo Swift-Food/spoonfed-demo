@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildInvoice,
   computeTotals,
   earliestAvailableDate,
   getOrderMenu,
@@ -223,5 +224,39 @@ describe('validateMinimums', () => {
     };
     const violations = validateMinimums(order, menu, [item]);
     expect(violations.some((v) => v.includes('Seasonal Sandwich Platter'))).toBe(true);
+  });
+});
+
+describe('buildInvoice', () => {
+  const deliveredOrder: Order = {
+    ...baseOrder,
+    orderNumber: 'EDN-1003',
+    poNumber: 'SKY-PO-1003',
+    costCentre: 'Marketing',
+  };
+
+  it('derives the invoice number from the order number', () => {
+    const invoice = buildInvoice(deliveredOrder, account, new Date('2026-06-14T00:00:00'));
+    expect(invoice.invoiceNumber).toBe('INV-1003');
+  });
+
+  it('carries the PO number and cost centre from the order', () => {
+    const invoice = buildInvoice(deliveredOrder, account, new Date('2026-06-14T00:00:00'));
+    expect(invoice.poNumber).toBe('SKY-PO-1003');
+    expect(invoice.costCentre).toBe('Marketing');
+  });
+
+  it('carries totals and lines from the order', () => {
+    const invoice = buildInvoice(deliveredOrder, account, new Date('2026-06-14T00:00:00'));
+    expect(invoice.subtotal).toBe(deliveredOrder.subtotal);
+    expect(invoice.tax).toBe(deliveredOrder.tax);
+    expect(invoice.total).toBe(deliveredOrder.total);
+    expect(invoice.lines).toEqual([{ name: 'Seasonal Sandwich Platter', qty: 3, unitPrice: 28, total: 84 }]);
+  });
+
+  it('sets the due date to the issue date plus the account payment terms', () => {
+    const invoice = buildInvoice(deliveredOrder, account, new Date('2026-06-14T00:00:00'));
+    expect(invoice.issueDate).toBe('2026-06-14');
+    expect(invoice.dueDate).toBe('2026-07-14'); // account.paymentTermsDays = 30
   });
 });

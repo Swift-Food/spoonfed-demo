@@ -1,5 +1,5 @@
 import { parseISO, getDay, startOfDay, endOfDay, addDays, format } from 'date-fns';
-import type { Account, Item, Menu, Order, OrderLine, OrderStatus } from './types';
+import type { Account, Invoice, Item, Menu, Order, OrderLine, OrderStatus } from './types';
 import { getOrderCutoff } from './dates';
 import { formatMoney, round2 } from './money';
 
@@ -81,4 +81,22 @@ export function canEditOrder(order: Order, menu: Menu, now: Date): boolean {
 
 export function canCancelOrder(order: Order, menu: Menu, now: Date): boolean {
   return CANCELLABLE_STATUSES.includes(order.status) && now < getOrderCutoff(menu, order.eventDate);
+}
+
+// Carries PO/cost-centre and totals from a delivered order onto its invoice.
+export function buildInvoice(order: Order, account: Account, now: Date): Omit<Invoice, 'id'> {
+  return {
+    invoiceNumber: order.orderNumber.replace('EDN-', 'INV-'),
+    orderId: order.id,
+    accountId: order.accountId,
+    status: 'draft',
+    issueDate: format(now, 'yyyy-MM-dd'),
+    dueDate: format(addDays(now, account.paymentTermsDays), 'yyyy-MM-dd'),
+    poNumber: order.poNumber,
+    costCentre: order.costCentre,
+    lines: order.lines.map((l) => ({ name: l.nameSnapshot, qty: l.qty, unitPrice: l.unitPriceSnapshot, total: l.lineTotal })),
+    subtotal: order.subtotal,
+    tax: order.tax,
+    total: order.total,
+  };
 }

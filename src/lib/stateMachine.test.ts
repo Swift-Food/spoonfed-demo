@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canTransition, TRANSITIONS } from './stateMachine';
+import { canTransition, ROLE_TRANSITIONS, TRANSITIONS } from './stateMachine';
 import type { Order, OrderStatus, Role } from './types';
 
 function makeOrder(status: OrderStatus): Order {
@@ -82,6 +82,23 @@ describe('canTransition', () => {
       for (const status of ALL_STATUSES) {
         expect(canTransition(makeOrder('invoiced'), status, role)).toBe(false);
         expect(canTransition(makeOrder('cancelled'), status, role)).toBe(false);
+      }
+    }
+  });
+
+  it('walks the full order lifecycle, passing canTransition only for the allowed role(s) at each step', () => {
+    const LIFECYCLE_PATH: { from: OrderStatus; to: OrderStatus }[] = [
+      { from: 'submitted', to: 'confirmed' },
+      { from: 'confirmed', to: 'in_production' },
+      { from: 'in_production', to: 'out_for_delivery' },
+      { from: 'out_for_delivery', to: 'delivered' },
+      { from: 'delivered', to: 'invoiced' },
+    ];
+
+    for (const { from, to } of LIFECYCLE_PATH) {
+      const allowedRoles = ROLE_TRANSITIONS[from] ?? [];
+      for (const role of ALL_ROLES) {
+        expect(canTransition(makeOrder(from), to, role)).toBe(allowedRoles.includes(role));
       }
     }
   });
