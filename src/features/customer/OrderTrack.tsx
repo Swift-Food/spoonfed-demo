@@ -1,12 +1,15 @@
-import { Link, Navigate, useParams } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { Check } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { useStore } from '../../store/useStore';
 import type { OrderStatus } from '../../lib/types';
 import { STATUS_LABELS } from '../../lib/stateMachine';
+import { canCancelOrder, canEditOrder, getOrderMenu } from '../../lib/rules';
 import { formatFriendlyDate } from '../../lib/dates';
 import { formatUnit } from '../../lib/money';
 import Money from '../../components/common/Money';
+import Modal from '../../components/common/Modal';
 import StatusChip from '../../components/common/StatusChip';
 import Toast from '../../components/common/Toast';
 
@@ -21,14 +24,38 @@ const ORDER_STAGES: OrderStatus[] = [
 
 export default function OrderTrack() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const orders = useStore((s) => s.orders);
   const persona = useStore((s) => s.persona);
+  const items = useStore((s) => s.items);
+  const menus = useStore((s) => s.menus);
+  const startEdit = useStore((s) => s.startEdit);
+  const cancelOrder = useStore((s) => s.cancelOrder);
+
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelNote, setCancelNote] = useState('');
 
   const order = orders.find((o) => o.id === id);
   if (!order || order.placedByContactId !== persona.contactId) return <Navigate to="/orders" replace />;
 
   const stages: OrderStatus[] = order.requiresApproval ? ['pending_approval', ...ORDER_STAGES] : ORDER_STAGES;
   const currentIndex = stages.indexOf(order.status);
+
+  const menu = getOrderMenu(order, items, menus);
+  const now = new Date();
+  const canEdit = !!menu && canEditOrder(order, menu, now);
+  const canCancel = !!menu && canCancelOrder(order, menu, now);
+
+  const handleEdit = () => {
+    startEdit(order.id);
+    navigate('/cart');
+  };
+
+  const handleCancel = () => {
+    cancelOrder(order.id, cancelNote.trim() || undefined);
+    setCancelOpen(false);
+    setCancelNote('');
+  };
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -38,9 +65,58 @@ export default function OrderTrack() {
 
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
         <h1 className="font-serif text-3xl text-eden-green">{order.orderNumber}</h1>
-        <StatusChip status={order.status} />
+        <div className="flex items-center gap-2">
+          <StatusChip status={order.status} />
+          {canEdit && (
+            <button
+              type="button"
+              onClick={handleEdit}
+              className="rounded-lg border border-eden-sage px-3 py-1.5 text-sm font-medium text-eden-green hover:bg-eden-cream"
+            >
+              Edit order
+            </button>
+          )}
+          {canCancel && (
+            <button
+              type="button"
+              onClick={() => setCancelOpen(true)}
+              className="rounded-lg border border-eden-berry px-3 py-1.5 text-sm font-medium text-eden-berry hover:bg-eden-berry/10"
+            >
+              Cancel order
+            </button>
+          )}
+        </div>
       </div>
       <p className="mt-1 text-sm text-eden-stone">Event date: {formatFriendlyDate(order.eventDate)}</p>
+
+      <Modal open={cancelOpen} onClose={() => setCancelOpen(false)} title="Cancel this order?">
+        <p className="text-sm text-eden-stone">
+          This will cancel {order.orderNumber}. You can add a note for Eden's team if you'd like.
+        </p>
+        <textarea
+          rows={3}
+          value={cancelNote}
+          onChange={(e) => setCancelNote(e.target.value)}
+          placeholder="Optional note…"
+          className="mt-3 w-full rounded-lg border border-eden-sage bg-white px-3 py-2 text-sm text-eden-charcoal focus:border-eden-green focus:outline-none focus:ring-1 focus:ring-eden-green"
+        />
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setCancelOpen(false)}
+            className="rounded-lg border border-eden-sage px-4 py-2 text-sm font-medium text-eden-charcoal hover:bg-eden-cream"
+          >
+            Keep order
+          </button>
+          <button
+            type="button"
+            onClick={handleCancel}
+            className="rounded-lg bg-eden-berry px-4 py-2 text-sm font-semibold text-eden-cream hover:bg-eden-berry/90"
+          >
+            Cancel order
+          </button>
+        </div>
+      </Modal>
 
       {order.status === 'cancelled' && (
         <div className="mt-4">

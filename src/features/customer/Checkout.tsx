@@ -13,12 +13,16 @@ const INPUT_CLASS =
 
 export default function Checkout() {
   const draftOrder = useStore((s) => s.draftOrder);
+  const orders = useStore((s) => s.orders);
+  const persona = useStore((s) => s.persona);
   const accounts = useStore((s) => s.accounts);
   const contacts = useStore((s) => s.contacts);
   const items = useStore((s) => s.items);
   const menus = useStore((s) => s.menus);
   const setDraftField = useStore((s) => s.setDraftField);
   const submitDraft = useStore((s) => s.submitDraft);
+  const amendOrder = useStore((s) => s.amendOrder);
+  const createBackOfficeOrder = useStore((s) => s.createBackOfficeOrder);
 
   const account = draftOrder ? accounts.find((a) => a.id === draftOrder.accountId) : undefined;
   const menu = draftOrder ? getOrderMenu(draftOrder, items, menus) : undefined;
@@ -50,11 +54,14 @@ export default function Checkout() {
   const [costCentre, setCostCentre] = useState(draftOrder?.costCentre ?? account?.costCentres[0] ?? '');
   const [deptCode, setDeptCode] = useState(draftOrder?.deptCode ?? '');
   const [poError, setPoError] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [redirectTo, setRedirectTo] = useState<string | null>(null);
 
-  if (!draftOrder) return <Navigate to={submitted ? '/orders' : '/order'} replace />;
+  if (!draftOrder) return <Navigate to={redirectTo ?? '/order'} replace />;
   if (draftOrder.lines.length === 0) return <Navigate to="/cart" replace />;
   if (!account) return <Navigate to="/order" replace />;
+
+  const isEditing = orders.some((o) => o.id === draftOrder.id);
+  const isBackOffice = !isEditing && draftOrder.source === 'back_office';
 
   const deliveryLocation =
     locationChoice === 'other'
@@ -71,7 +78,8 @@ export default function Checkout() {
       return;
     }
     setPoError(false);
-    setDraftField({
+
+    const patch = {
       headcount,
       deliveryLocation,
       requestedDeliveryTime: deliveryTime,
@@ -79,14 +87,33 @@ export default function Checkout() {
       poNumber: poNumber.trim() || undefined,
       costCentre,
       deptCode: deptCode.trim() || undefined,
-    });
-    setSubmitted(true);
-    submitDraft();
+    };
+
+    if (isEditing) {
+      setRedirectTo(persona.role === 'caterer_admin' ? `/admin/orders/${draftOrder.id}` : `/orders/${draftOrder.id}`);
+      amendOrder(draftOrder.id, {
+        ...patch,
+        lines: draftOrder.lines,
+        subtotal: draftOrder.subtotal,
+        tax: draftOrder.tax,
+        total: draftOrder.total,
+      });
+    } else if (isBackOffice) {
+      setRedirectTo(`/admin/orders/${draftOrder.id}`);
+      setDraftField(patch);
+      createBackOfficeOrder();
+    } else {
+      setRedirectTo('/orders');
+      setDraftField(patch);
+      submitDraft();
+    }
   };
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="font-serif text-3xl text-eden-green">Checkout</h1>
+      <h1 className="font-serif text-3xl text-eden-green">
+        {isEditing ? 'Edit order' : isBackOffice ? 'Create order' : 'Checkout'}
+      </h1>
       <p className="mt-1 text-sm text-eden-stone">Event date: {formatFriendlyDate(draftOrder.eventDate)}</p>
 
       <div className="mt-6 rounded-xl border border-eden-sage/40 bg-white p-5 shadow-sm">
@@ -120,11 +147,15 @@ export default function Checkout() {
         </div>
       </div>
 
-      {needsApproval && (
+      {needsApproval && !isEditing && (
         <div className="mt-4">
           <Toast
             variant="warning"
-            message={`This order totals ${formatMoney(draftOrder.total)}, which meets ${account.name}'s ${formatMoney(account.approvalThreshold)} approval threshold. It'll be sent to ${approver?.name ?? 'your approver'} for approval before Eden sees it.`}
+            message={
+              isBackOffice
+                ? `This order totals ${formatMoney(draftOrder.total)}, which meets ${account.name}'s ${formatMoney(account.approvalThreshold)} approval threshold. It'll be routed to ${approver?.name ?? 'the account approver'} for approval before being confirmed.`
+                : `This order totals ${formatMoney(draftOrder.total)}, which meets ${account.name}'s ${formatMoney(account.approvalThreshold)} approval threshold. It'll be sent to ${approver?.name ?? 'your approver'} for approval before Eden sees it.`
+            }
           />
         </div>
       )}
@@ -269,7 +300,7 @@ export default function Checkout() {
           disabled={violations.length > 0}
           className="rounded-lg bg-eden-green px-5 py-2.5 text-sm font-semibold text-eden-cream shadow-sm transition-colors hover:bg-eden-leaf disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Place order
+          {isEditing ? 'Save changes' : isBackOffice ? 'Create order' : 'Place order'}
         </button>
       </div>
     </div>

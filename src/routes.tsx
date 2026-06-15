@@ -49,11 +49,11 @@ export default function AppRoutes() {
       <Route path="/" element={<AppShell />}>
         <Route index element={<HomeRedirect />} />
 
-        <Route path="order" element={<RequireRole allow={['orderer']}><DatePicker /></RequireRole>} />
-        <Route path="order/menus" element={<RequireRole allow={['orderer']}><MenuBrowse /></RequireRole>} />
-        <Route path="order/menu/:menuId" element={<RequireRole allow={['orderer']}><MenuDetail /></RequireRole>} />
-        <Route path="cart" element={<RequireRole allow={['orderer']}><Cart /></RequireRole>} />
-        <Route path="checkout" element={<RequireRole allow={['orderer']}><Checkout /></RequireRole>} />
+        <Route path="order" element={<RequireRole allow={['orderer', 'caterer_admin']}><DatePicker /></RequireRole>} />
+        <Route path="order/menus" element={<RequireRole allow={['orderer', 'caterer_admin']}><MenuBrowse /></RequireRole>} />
+        <Route path="order/menu/:menuId" element={<RequireRole allow={['orderer', 'caterer_admin']}><MenuDetail /></RequireRole>} />
+        <Route path="cart" element={<RequireRole allow={['orderer', 'caterer_admin']}><Cart /></RequireRole>} />
+        <Route path="checkout" element={<RequireRole allow={['orderer', 'caterer_admin']}><Checkout /></RequireRole>} />
         <Route path="orders" element={<RequireRole allow={['orderer']}><MyOrders /></RequireRole>} />
         <Route path="orders/:id" element={<RequireRole allow={['orderer']}><OrderTrack /></RequireRole>} />
 

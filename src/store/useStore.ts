@@ -16,7 +16,7 @@ import type {
   Role,
 } from '../lib/types';
 import { createSeedData, DEFAULT_PERSONA } from '../lib/seed';
-import { buildInvoice, computeTotals, requiresApproval } from '../lib/rules';
+import { buildInvoice, canCancelOrder, computeTotals, getOrderMenu, requiresApproval } from '../lib/rules';
 import { canTransition, STATUS_LABELS } from '../lib/stateMachine';
 import { round2 } from '../lib/money';
 
@@ -47,7 +47,8 @@ interface AppState {
   setPersona: (persona: Persona) => void;
 
   // customer ordering
-  startDraft: (params: { accountId: string; contactId: string; eventDate: string }) => void;
+  startDraft: (params: { accountId: string; contactId: string; eventDate: string; source?: Order['source'] }) => void;
+  startEdit: (orderId: string) => void;
   addLine: (itemId: string, qty: number, slotId?: string) => void;
   updateLineQty: (lineId: string, qty: number) => void;
   removeLine: (lineId: string) => void;
@@ -65,7 +66,7 @@ interface AppState {
   advanceStatus: (orderId: string, toStatus: OrderStatus) => void;
   assignDriver: (orderId: string, driverId: string) => void;
   cancelOrder: (orderId: string, note?: string) => void;
-  createBackOfficeOrder: (payload: Partial<Order>) => void;
+  createBackOfficeOrder: () => void;
   amendOrder: (orderId: string, patch: Partial<Order>) => void;
 
   // menus
@@ -95,7 +96,7 @@ export const useStore = create<AppState>()((set) => ({
   setPersona: (persona) => set({ persona }),
 
   // --- Customer ordering (Phase 1) ---
-  startDraft: ({ accountId, contactId, eventDate }) =>
+  startDraft: ({ accountId, contactId, eventDate, source = 'customer_portal' }) =>
     set(() => {
       const now = new Date().toISOString();
       const draft: Order = {
@@ -118,12 +119,19 @@ export const useStore = create<AppState>()((set) => ({
         deliveryFee: 0,
         tax: 0,
         total: 0,
-        source: 'customer_portal',
+        source,
         createdAt: now,
         updatedAt: now,
         history: [{ at: now, actorRole: 'orderer', note: 'Draft started.' }],
       };
       return { draftOrder: draft };
+    }),
+
+  startEdit: (orderId) =>
+    set((state) => {
+      const order = state.orders.find((o) => o.id === orderId);
+      if (!order) return {};
+      return { draftOrder: { ...order, lines: order.lines.map((l) => ({ ...l })) } };
     }),
 
   addLine: (itemId, qty, slotId) =>
@@ -269,12 +277,81 @@ export const useStore = create<AppState>()((set) => ({
     }),
 
   // --- Approval (Phase 3) ---
-  approveOrder: (_orderId, _note) => {
-    // Implemented in Phase 3.
-  },
-  rejectOrder: (_orderId, _note) => {
-    // Implemented in Phase 3.
-  },
+  approveOrder: (orderId, note) =>
+    set((state) => {
+      const order = state.orders.find((o) => o.id === orderId);
+      if (!order || !canTransition(order, 'submitted', state.persona.role)) return {};
+
+      const now = new Date().toISOString();
+      const actor = contactName(state.contacts, state.persona.contactId);
+      const account = state.accounts.find((a) => a.id === order.accountId);
+      const updated: Order = {
+        ...order,
+        status: 'submitted',
+        approvalStatus: 'approved',
+        approverId: state.persona.contactId,
+        approvalNote: note,
+        updatedAt: now,
+        history: [...order.history, { at: now, actorRole: state.persona.role, note: `Approved by ${actor}.${note ? ` ${note}` : ''}` }],
+      };
+
+      const approvedNotification: AppNotification = {
+        id: nanoid(),
+        type: 'approved',
+        orderId,
+        recipientRole: 'orderer',
+        message: `Good news — order ${order.orderNumber} has been approved by ${actor}.`,
+        createdAt: now,
+        read: false,
+      };
+      const receivedNotification: AppNotification = {
+        id: nanoid(),
+        type: 'order_received',
+        orderId,
+        recipientRole: 'caterer_admin',
+        message: `New order ${order.orderNumber} received from ${account?.name ?? 'a customer'}.`,
+        createdAt: now,
+        read: false,
+      };
+
+      return {
+        orders: state.orders.map((o) => (o.id === orderId ? updated : o)),
+        notifications: [...state.notifications, approvedNotification, receivedNotification],
+      };
+    }),
+
+  rejectOrder: (orderId, note) =>
+    set((state) => {
+      const order = state.orders.find((o) => o.id === orderId);
+      if (!order || !canTransition(order, 'draft', state.persona.role)) return {};
+
+      const now = new Date().toISOString();
+      const actor = contactName(state.contacts, state.persona.contactId);
+      const updated: Order = {
+        ...order,
+        status: 'draft',
+        approvalStatus: 'rejected',
+        approverId: state.persona.contactId,
+        approvalNote: note,
+        updatedAt: now,
+        history: [...order.history, { at: now, actorRole: state.persona.role, note: `Rejected by ${actor}: ${note ?? ''}` }],
+      };
+
+      const notification: AppNotification = {
+        id: nanoid(),
+        type: 'rejected',
+        orderId,
+        recipientRole: 'orderer',
+        message: `Order ${order.orderNumber} was not approved: ${note ?? ''}`,
+        createdAt: now,
+        read: false,
+      };
+
+      return {
+        orders: state.orders.map((o) => (o.id === orderId ? updated : o)),
+        notifications: [...state.notifications, notification],
+      };
+    }),
 
   // --- Back office (Phase 2) ---
   confirmOrder: (orderId) =>
@@ -380,29 +457,115 @@ export const useStore = create<AppState>()((set) => ({
       return { orders: state.orders.map((o) => (o.id === orderId ? updated : o)) };
     }),
 
-  cancelOrder: (_orderId, _note) => {
-    // Implemented in Phase 3.
-  },
-  createBackOfficeOrder: (_payload) => {
-    // Implemented in Phase 3.
-  },
-  amendOrder: (_orderId, _patch) => {
-    // Implemented in Phase 3.
-  },
+  cancelOrder: (orderId, note) =>
+    set((state) => {
+      const order = state.orders.find((o) => o.id === orderId);
+      if (!order) return {};
+      const menu = getOrderMenu(order, state.items, state.menus);
+      if (!menu || !canCancelOrder(order, menu, new Date())) return {};
+
+      const now = new Date().toISOString();
+      const actor = contactName(state.contacts, state.persona.contactId);
+      const updated: Order = {
+        ...order,
+        status: 'cancelled',
+        updatedAt: now,
+        history: [...order.history, { at: now, actorRole: state.persona.role, note: `Order cancelled by ${actor}.${note ? ` ${note}` : ''}` }],
+      };
+
+      return { orders: state.orders.map((o) => (o.id === orderId ? updated : o)) };
+    }),
+
+  createBackOfficeOrder: () =>
+    set((state) => {
+      const draft = state.draftOrder;
+      if (!draft) return {};
+
+      const account = state.accounts.find((a) => a.id === draft.accountId);
+      const contact = state.contacts.find((c) => c.id === draft.placedByContactId);
+      const actor = contactName(state.contacts, state.persona.contactId);
+      const needsApproval = account ? requiresApproval(account, draft.total) : false;
+      const now = new Date().toISOString();
+      const orderNumber = nextOrderNumber(state.orders);
+      const status: OrderStatus = needsApproval ? 'pending_approval' : 'confirmed';
+
+      const created: Order = {
+        ...draft,
+        orderNumber,
+        status,
+        source: 'back_office',
+        requiresApproval: needsApproval,
+        approvalStatus: needsApproval ? 'pending' : 'n/a',
+        updatedAt: now,
+        history: [
+          ...draft.history,
+          { at: now, actorRole: state.persona.role, note: `Order created on behalf of ${contact?.name ?? 'the customer'} by ${actor}.` },
+        ],
+      };
+
+      const notification: AppNotification = needsApproval
+        ? {
+            id: nanoid(),
+            type: 'approval_requested',
+            orderId: created.id,
+            recipientRole: 'approver',
+            message: `Order ${orderNumber} for ${contact?.name ?? 'a customer'} needs your approval.`,
+            createdAt: now,
+            read: false,
+          }
+        : {
+            id: nanoid(),
+            type: 'confirmed',
+            orderId: created.id,
+            recipientRole: 'orderer',
+            message: `Eden's got it — order ${orderNumber} is confirmed.`,
+            createdAt: now,
+            read: false,
+          };
+
+      return {
+        orders: [...state.orders, created],
+        draftOrder: null,
+        notifications: [...state.notifications, notification],
+      };
+    }),
+
+  amendOrder: (orderId, patch) =>
+    set((state) => {
+      const order = state.orders.find((o) => o.id === orderId);
+      if (!order) return {};
+
+      const now = new Date().toISOString();
+      const actor = contactName(state.contacts, state.persona.contactId);
+      const updated: Order = {
+        ...order,
+        ...patch,
+        updatedAt: now,
+        history: [...order.history, { at: now, actorRole: state.persona.role, note: `Order amended by ${actor}.` }],
+      };
+
+      return {
+        orders: state.orders.map((o) => (o.id === orderId ? updated : o)),
+        draftOrder: null,
+      };
+    }),
 
   // --- Menus (Phase 3) ---
-  createMenu: (_menu) => {
-    // Implemented in Phase 3.
-  },
-  updateMenu: (_menuId, _patch) => {
-    // Implemented in Phase 3.
-  },
-  createItem: (_item) => {
-    // Implemented in Phase 3.
-  },
-  updateItem: (_itemId, _patch) => {
-    // Implemented in Phase 3.
-  },
+  createMenu: (menu) =>
+    set((state) => ({ menus: [...state.menus, { ...menu, id: nanoid() }] })),
+
+  updateMenu: (menuId, patch) =>
+    set((state) => ({
+      menus: state.menus.map((m) => (m.id === menuId ? { ...m, ...patch } : m)),
+    })),
+
+  createItem: (item) =>
+    set((state) => ({ items: [...state.items, { ...item, id: nanoid() }] })),
+
+  updateItem: (itemId, patch) =>
+    set((state) => ({
+      items: state.items.map((i) => (i.id === itemId ? { ...i, ...patch } : i)),
+    })),
 
   // --- Invoices (Phase 2) ---
   generateInvoice: (orderId) =>

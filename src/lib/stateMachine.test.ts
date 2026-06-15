@@ -51,6 +51,13 @@ describe('canTransition', () => {
     expect(canTransition(makeOrder('pending_approval'), 'submitted', 'orderer')).toBe(false);
   });
 
+  it('only the approver may approve (pending_approval → submitted) or reject (pending_approval → draft)', () => {
+    for (const role of ALL_ROLES) {
+      expect(canTransition(makeOrder('pending_approval'), 'submitted', role)).toBe(role === 'approver');
+      expect(canTransition(makeOrder('pending_approval'), 'draft', role)).toBe(role === 'approver');
+    }
+  });
+
   it('allows caterer_admin to confirm a submitted order', () => {
     expect(canTransition(makeOrder('submitted'), 'confirmed', 'caterer_admin')).toBe(true);
   });

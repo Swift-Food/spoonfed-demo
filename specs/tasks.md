@@ -112,3 +112,52 @@
 - [x] `npm run lint` clean
 - [x] `npm run test` passes
 - [x] Smoke: as Sam (caterer_admin), EDN-1003 (Emma's confirmed, today-dated order) appears on the Calendar today; start production via ProductionList, dispatch + deliver via DeliveryRunSheet, generate invoice via InvoiceList with PO/cost-centre carried through; switch to Emma and confirm OrderTrack reflects in_production → out_for_delivery → delivered → invoiced
+
+## Phase 3 — Differentiators
+
+### lib (pure functions + tests)
+- [x] `src/lib/stateMachine.test.ts` — add `pending_approval → submitted` and `pending_approval → draft` cases: allowed for `approver`, blocked for every other role
+
+### Store
+- [x] `src/store/useStore.ts` — `startDraft` gains optional `source` (default `'customer_portal'`)
+- [x] `src/store/useStore.ts` — `startEdit(orderId)`: copies an existing order into `draftOrder` for re-editing via Cart/Checkout
+- [x] `src/store/useStore.ts` — `approveOrder(orderId, note?)`: pending_approval→submitted, sets approvalStatus/approverId/approvalNote, notifies orderer (`approved`) + caterer_admin (`order_received`)
+- [x] `src/store/useStore.ts` — `rejectOrder(orderId, note)`: pending_approval→draft, sets approvalStatus/approverId/approvalNote, notifies orderer (`rejected`)
+- [x] `src/store/useStore.ts` — `cancelOrder(orderId, note?)`: guarded by `canCancelOrder`, status→cancelled, history note
+- [x] `src/store/useStore.ts` — `createBackOfficeOrder()`: builds from `draftOrder`, source `back_office`, status `pending_approval`|`confirmed` per `requiresApproval`
+- [x] `src/store/useStore.ts` — `amendOrder(orderId, patch)`: replaces lines/fields on an existing order, history note "Order amended by …"
+- [x] `src/store/useStore.ts` — `createMenu`, `updateMenu`, `createItem`, `updateItem`
+
+### Tests
+- [x] `src/store/useStore.test.ts` (new) — `rejectOrder` returns EDN-1002 to `draft` with note; `approveOrder` moves it to `submitted`; `updateItem` price change does not mutate an existing order line's `unitPriceSnapshot`/`nameSnapshot`
+
+### Customer components (builder reuse for Edit)
+- [x] `src/routes.tsx` — `/order`, `/order/menus`, `/order/menu/:menuId`, `/cart`, `/checkout` allow `caterer_admin` too
+- [x] `src/features/customer/Checkout.tsx` — branch submit: edit mode → `amendOrder`, back-office draft → `createBackOfficeOrder`, else `submitDraft`; redirect accordingly with adjusted copy
+- [x] `src/features/customer/OrderTrack.tsx` — Edit button (`canEditOrder`) → `startEdit` + navigate `/cart`; Cancel button (`canCancelOrder`) → `Modal` with note → `cancelOrder`
+
+### Approval flow
+- [x] `src/features/approver/ApprovalQueue.tsx` — orders with `pending_approval` for the approver's account, `EmptyState` when none
+- [x] `src/features/approver/ApprovalDetail.tsx` — order summary + Approve / Reject (`Modal` with required note)
+
+### Menu management
+- [x] `src/features/backoffice/MenuManager.tsx` — menu list, active/offline toggles, "New menu" → `createMenu`
+- [x] `src/features/backoffice/MenuEditor.tsx` — menu fields form (`updateMenu`) + item CRUD (`createItem`/`updateItem`) with allergen/dietary editing
+
+### Accounts CRM
+- [x] `src/features/backoffice/AccountList.tsx` — accounts table → `/admin/accounts/:id`
+- [x] `src/features/backoffice/AccountDetail.tsx` — read-only config, contacts, order history with "Reorder" link
+
+### Create order on behalf
+- [x] `src/features/backoffice/CreateOrderOnBehalf.tsx` — account/contact/date picker → `startDraft({..., source: 'back_office'})` → `/order/menus`
+
+### Notifications
+- [x] `src/components/layout/NotificationBell.tsx` (new) — feed filtered by persona role, mark read + navigate on click
+- [x] `src/components/layout/TopBar.tsx` — use `NotificationBell`; toast on new notification for current persona
+
+### GATE
+- [x] `npx tsc --noEmit` clean
+- [x] `npm run build` succeeds
+- [x] `npm run lint` clean
+- [x] `npm run test` passes
+- [x] Smoke: Emma places a ≥£250 Fork Buffet order (pending_approval) → Raj approves it in ApprovalQueue → Sam sees it as a new order; a second ≥£250 order rejected by Raj returns to draft with a note visible on Emma's OrderTrack; Emma edits/cancels EDN-1001 via OrderTrack; Sam edits an item's price in MenuManager and confirms a historical order line is unchanged (snapshot proof) while a new order picks up the new price; Sam reorders from AccountDetail via CreateOrderOnBehalf; NotificationBell shows a filtered feed and toasts on new notifications for each persona
