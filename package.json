@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@swift-food-services/catering-widget": "^0.2.0-beta.11",
     "date-fns": "^4.4.0",
     "lucide-react": "^1.18.0",
     "nanoid": "^5.1.11",
