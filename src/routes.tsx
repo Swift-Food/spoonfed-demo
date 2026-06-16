@@ -6,7 +6,7 @@ import AppShell from './components/layout/AppShell';
 import { PERSONA_HOME_ROUTES } from './lib/personas';
 
 import PersonaPicker from './features/customer/PersonaPicker';
-import DatePicker from './features/customer/DatePicker';
+import OrderEntry from './features/customer/OrderEntry';
 import MenuBrowse from './features/customer/MenuBrowse';
 import MenuDetail from './features/customer/MenuDetail';
 import Cart from './features/customer/Cart';
@@ -49,7 +49,7 @@ export default function AppRoutes() {
       <Route path="/" element={<AppShell />}>
         <Route index element={<HomeRedirect />} />
 
-        <Route path="order" element={<RequireRole allow={['orderer', 'caterer_admin']}><DatePicker /></RequireRole>} />
+        <Route path="order" element={<RequireRole allow={['orderer', 'caterer_admin']}><OrderEntry /></RequireRole>} />
         <Route path="order/menus" element={<RequireRole allow={['orderer', 'caterer_admin']}><MenuBrowse /></RequireRole>} />
         <Route path="order/menu/:menuId" element={<RequireRole allow={['orderer', 'caterer_admin']}><MenuDetail /></RequireRole>} />
         <Route path="cart" element={<RequireRole allow={['orderer', 'caterer_admin']}><Cart /></RequireRole>} />

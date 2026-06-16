@@ -155,4 +155,11 @@ export interface Persona {
   role: Role;
   accountId?: string;
   contactId?: string;
+  /**
+   * Orderer personas that drive the embedded Swift catering widget on `/order`
+   * instead of Eden's in-house ordering flow (DatePicker → menus → cart).
+   */
+  useWidget?: boolean;
+  /** For widget orderers: enable the widget's AI chat panel. */
+  aiEnabled?: boolean;
 }

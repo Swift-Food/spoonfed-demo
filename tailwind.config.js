@@ -20,6 +20,16 @@ export default {
         serif: ['"Cormorant Garamond"', 'Georgia', 'serif'],
         sans: ['"Nunito Sans"', 'system-ui', 'sans-serif'],
       },
+      // Tailwind v4 shifted the shadow/radius scales (v3 `shadow-sm` → v4
+      // `shadow-xs`, etc.). Pin the v3 values so the existing screens — which
+      // use `shadow-sm` and bare `rounded` heavily — keep their original look.
+      boxShadow: {
+        sm: '0 1px 2px 0 rgb(0 0 0 / 0.05)',
+        DEFAULT: '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)',
+      },
+      borderRadius: {
+        DEFAULT: '0.25rem',
+      },
     },
   },
   plugins: [],

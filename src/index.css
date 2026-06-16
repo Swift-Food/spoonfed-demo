@@ -1,6 +1,22 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* Keep the existing JS theme (eden.* colors, fonts, pinned shadow/radius). */
+@config "../tailwind.config.js";
+
+/*
+ * v4 compatibility: Tailwind v4 changed the default border/divide color from
+ * gray-200 to `currentColor`. This app has many bare `border` utilities that
+ * relied on the v3 default, so restore it to avoid borders turning dark.
+ */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentColor);
+  }
+}
 
 body {
   margin: 0;
