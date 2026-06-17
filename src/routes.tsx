@@ -28,6 +28,7 @@ import MenuEditor from './features/backoffice/MenuEditor';
 import AccountList from './features/backoffice/AccountList';
 import AccountDetail from './features/backoffice/AccountDetail';
 import InvoiceList from './features/backoffice/InvoiceList';
+import Analytics from './features/backoffice/Analytics';
 
 function RequireRole({ allow, children }: { allow: Role[]; children: ReactNode }) {
   const persona = useStore((s) => s.persona);
@@ -71,6 +72,7 @@ export default function AppRoutes() {
         <Route path="admin/accounts" element={<RequireRole allow={['caterer_admin']}><AccountList /></RequireRole>} />
         <Route path="admin/accounts/:id" element={<RequireRole allow={['caterer_admin']}><AccountDetail /></RequireRole>} />
         <Route path="admin/invoices" element={<RequireRole allow={['caterer_admin']}><InvoiceList /></RequireRole>} />
+        <Route path="admin/analytics" element={<RequireRole allow={['caterer_admin']}><Analytics /></RequireRole>} />
 
         <Route path="*" element={<HomeRedirect />} />
       </Route>

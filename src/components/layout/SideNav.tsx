@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Calendar, ChefHat, Truck, BookOpen, Users, Receipt } from 'lucide-react';
+import { LayoutDashboard, Calendar, ChefHat, Truck, BookOpen, Users, Receipt, BarChart2 } from 'lucide-react';
 
 const NAV_ITEMS = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard },
@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { to: '/admin/menus', label: 'Menus', icon: BookOpen },
   { to: '/admin/accounts', label: 'Accounts', icon: Users },
   { to: '/admin/invoices', label: 'Invoices', icon: Receipt },
+  { to: '/admin/analytics', label: 'Analytics', icon: BarChart2 },
 ];
 
 export default function SideNav() {
